@@ -20,20 +20,20 @@ INSTRUCTIONS = ('Instructions for Employee (See also Notice to Employee on the b
 
 def document(form=FORM, notice=NOTICE, instructions=INSTRUCTIONS):
     return ''.join(f'<section data-w2-scope="{scope}">{text}</section>' for scope, text in
-                   [('form', form), ('notice', notice), ('instructions', instructions)])
+                   [('form', form)] * 3 + [('notice', notice), ('instructions', instructions)])
 
 
 class HTMLTests(unittest.TestCase):
-    def check(self, html):
+    def check(self, html, forms_per_employee=3):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'forms.html'
             path.write_text(html)
-            return check_document(path, DEFAULT_RULES)
+            return check_document(path, DEFAULT_RULES, forms_per_employee=forms_per_employee)
 
     def test_current_values_pass(self):
         report = self.check(document())
         self.assertTrue(report['passed'], report)
-        self.assertEqual(report['regions_checked'], 3)
+        self.assertEqual(report['regions_checked'], 5)
 
     def test_every_requested_old_value_fails(self):
         html = document()
@@ -85,7 +85,7 @@ class HTMLTests(unittest.TestCase):
         html += '<span class="notice">Notice to Employee</span>'
         html += '<span class="instructions">Instructions for Employee (See also Notice to Employee on the back of Copy B.)</span>'
         html += '</div></div>'
-        report = self.check(html)
+        report = self.check(html, forms_per_employee=1)
         self.assertTrue(report['passed'], report)
 
     def test_unknown_template_fails(self):
@@ -112,3 +112,63 @@ class HTMLTests(unittest.TestCase):
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
             path.unlink()
             self.assertEqual(subprocess.run(command, capture_output=True).returncode, 2)
+
+
+class EmployeeOutputTests(unittest.TestCase):
+    check = HTMLTests.check
+    def test_three_employees_print_one_line_each(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from check_w2 import print_report
+        report = self.check(document() * 3)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['employees_checked'], 3)
+        output = StringIO()
+        with redirect_stdout(output):
+            print_report(report)
+        self.assertEqual(output.getvalue().splitlines(), [
+            'PASS: Employee 1', 'PASS: Employee 2', 'PASS: Employee 3',
+            'Summary: 3 employee(s), 3 passed, 0 failed'])
+
+    def test_only_failed_checks_shown_for_middle_employee(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from check_w2 import print_report
+        bad = document().replace('14a Other', '14 Other', 1)
+        report = self.check(document() + bad + document())
+        self.assertFalse(report['passed'])
+        self.assertEqual([e['passed'] for e in report['employees']], [True, False, True])
+        output = StringIO()
+        with redirect_stdout(output):
+            print_report(report)
+        text = output.getvalue()
+        self.assertIn('PASS: Employee 1\nFAIL: Employee 2\n', text)
+        self.assertIn('form 1, HTML block 6: Box 14a Other', text)
+        self.assertIn('PASS: Employee 3', text)
+        self.assertNotIn('OMB number', text)
+        self.assertNotIn('Tax year', text)
+        self.assertNotIn('PASS: HTML block', text)
+
+    def test_missing_notice_does_not_borrow_next_employees_notice(self):
+        bad = document().replace(f'<section data-w2-scope="notice">{NOTICE}</section>', '')
+        report = self.check(bad + document())
+        self.assertEqual([e['passed'] for e in report['employees']], [False, True])
+        self.assertIn('Expected 1 notice section(s); found 0', report['employees'][0]['errors'])
+
+    def test_missing_all_back_sections_still_starts_new_employee(self):
+        forms = ''.join(f'<section data-w2-scope="form">{FORM}</section>' for _ in range(3))
+        report = self.check(forms + document())
+        self.assertEqual([e['passed'] for e in report['employees']], [False, True])
+
+    def test_incomplete_final_employee_fails(self):
+        report = self.check(document() + f'<section data-w2-scope="form">{FORM}</section>')
+        self.assertEqual([e['passed'] for e in report['employees']], [True, False])
+        self.assertIn('Expected 3 form section(s); found 1', report['employees'][1]['errors'])
+
+    def test_ignored_address_block_does_not_split_employee(self):
+        html = document().replace('<section data-w2-scope="notice">',
+            '<div class="mstrDocSubSection"><div>Address block</div></div><section data-w2-scope="notice">')
+        report = self.check(html * 2)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['ignored_blocks'], 2)
+        self.assertEqual(report['employees_checked'], 2)

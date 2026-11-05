@@ -155,7 +155,78 @@ def html_sections(block, styles):
     return []  # Address/cover blocks are not W-2 form copies.
 
 
-def check_document(path, rules, block_selector=None):
+def group_employees(regions, forms_per_employee, rules):
+    """Group consecutive export packets, without reading employee identities."""
+    groups = []
+    current = []
+    form_count = 0
+    for region in regions:
+        if region["section"] == "form" and current and (
+            form_count >= forms_per_employee or any(r["section"] != "form" for r in current)):
+            groups.append(current)
+            current, form_count = [], 0
+        current.append(region)
+        form_count += region["section"] == "form"
+    if current:
+        groups.append(current)
+    required = {r.get("scope", "all") for r in rules} - {"all"}
+    if not required:
+        required = {"form", "notice", "instructions"}
+    employees = []
+    for number, results in enumerate(groups, 1):
+        errors = []
+        for scope in sorted(required):
+            count = sum(r["section"] == scope for r in results)
+            expected = forms_per_employee if scope == "form" else 1
+            if count != expected:
+                errors.append(f"Expected {expected} {scope} section(s); found {count}")
+        # Export packets must start with forms, followed by Notice and Instructions.
+        order = {"form": 0, "notice": 1, "instructions": 2}
+        positions = [order[r["section"]] for r in results]
+        if positions != sorted(positions):
+            errors.append("Sections are out of order; expected forms, notice, instructions")
+        employees.append({"employee": number, "passed": not errors and all(r["passed"] for r in results),
+                          "errors": errors, "results": results})
+    return employees
+
+
+def print_report(report):
+    for employee in report["employees"]:
+        number = employee["employee"]
+        print(f"{'PASS' if employee['passed'] else 'FAIL'}: Employee {number}")
+        for error in employee["errors"]:
+            print(f"  FAIL: {error}")
+        form_number = 0
+        for result in employee["results"]:
+            if result["section"] == "form":
+                form_number += 1
+            if result["passed"]:
+                continue
+            label = f"form {form_number}" if result["section"] == "form" else result["section"]
+            location = f"{label}, HTML block {result['block']}"
+            if not result["text_available"]:
+                print(f"  FAIL: {location}: No extractable HTML text")
+            for check in result["checks"]:
+                if not check["passed"]:
+                    print(f"  FAIL: {location}: {check['rule']} "
+                          f"(required matches={check['required_matches']}, forbidden matches={check['forbidden_matches']})")
+    if not report["employees"]:
+        print("FAIL: No employee sections were checked")
+    passed = sum(e["passed"] for e in report["employees"])
+    print(f"Summary: {len(report['employees'])} employee(s), {passed} passed, "
+          f"{len(report['employees']) - passed} failed")
+
+
+def positive_int(value):
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return number
+
+
+def check_document(path, rules, block_selector=None, forms_per_employee=3):
+    if forms_per_employee < 1:
+        raise ValueError("forms_per_employee must be positive")
     soup = BeautifulSoup(Path(path).read_bytes(), "html.parser")
     styles = css_styles(soup)
     for node in list(soup.find_all(True)):
@@ -184,7 +255,9 @@ def check_document(path, rules, block_selector=None):
             regions.append({"block": index, "section": scope, "passed": bool(text.strip()) and all(c["passed"] for c in checks),
                             "text_available": bool(text.strip()), "checks": checks})
     missing = sorted({r["scope"] for r in rules if r.get("scope", "all") != "all"} - seen_scopes)
-    return {"passed": bool(regions) and not missing and all(r["passed"] for r in regions),
+    employees = group_employees(regions, forms_per_employee, rules)
+    return {"employees": employees, "employees_checked": len(employees),
+            "passed": bool(employees) and not missing and all(e["passed"] for e in employees),
             "missing_sections": missing, "regions_checked": len(regions), "ignored_blocks": ignored, "results": regions}
 
 
@@ -194,26 +267,18 @@ def main():
     parser.add_argument("--rules", type=Path, help="JSON array of name/required/forbidden regex rules")
     parser.add_argument("--json", type=Path, help="Write a report without extracted employee text")
     parser.add_argument("--block-selector", help="CSS selector for disjoint report containers")
+    parser.add_argument("--forms-per-employee", type=positive_int, default=3,
+                        help="Expected consecutive form copies per employee (default: 3)")
     args = parser.parse_args()
     try:
-        report = check_document(args.html, load_rules(args.rules), args.block_selector)
+        report = check_document(args.html, load_rules(args.rules), args.block_selector, args.forms_per_employee)
         if args.json:
             args.json.write_text(json.dumps(report, indent=2) + "\n")
     except Exception as exc:
         # Some parser exceptions include HTML content; don't echo arbitrary error text.
         print(f"ERROR ({type(exc).__name__}): unable to check HTML or configuration. Check paths, rules, and report block structure.", file=sys.stderr)
         return 2
-    for scope in report["missing_sections"]:
-        print(f"FAIL: missing required section: {scope}")
-    for result in report["results"]:
-        location = f"HTML block {result['block']}, {result['section']}"
-        print(f"{'PASS' if result['passed'] else 'FAIL'}: {location}")
-        if not result["text_available"]:
-            print("  No extractable HTML text; this section was not verified.")
-        for check in result["checks"]:
-            if not check["passed"]:
-                print(f"  {check['rule']}: required matches={check['required_matches']}, forbidden matches={check['forbidden_matches']}")
-    print(f"{'PASS' if report['passed'] else 'FAIL'}: {report['regions_checked']} section(s) checked")
+    print_report(report)
     return 0 if report["passed"] else 1
 
 

@@ -15,13 +15,27 @@ python -m venv .venv
 
 The report directory must already exist. Exit status is `0` for all checks passed, `1` for failed checks or missing sections, and `2` for an input/configuration/parser error. Reports identify HTML block numbers and section types, without employee names or extracted text. Processing is local; scripts are not executed and linked images/styles/resources are not downloaded. Keep employee exports and reports out of Git.
 
+## Employee results
+
+Console output shows one result per employee, with details only for failed checks:
+
+```text
+PASS: Employee 1
+FAIL: Employee 2
+  FAIL: form 1, HTML block 6: Box 14a Other (required matches=0, forbidden matches=1)
+PASS: Employee 3
+Summary: 3 employee(s), 2 passed, 1 failed
+```
+
+Missing/extra sections and sections out of order are also reported for the affected packet. The default expects three form copies per employee. Use `--forms-per-employee 1` for a template with one copy. JSON includes an `employees` array with per-employee status and errors, and retains detailed section results and match counts for troubleshooting.
+
 ## Checks
 
 - Each form copy: OMB No. **1545-0029**, **14a Other**, **W-2 Form Page 1 of 1**, and **2026**. Flags old Box 14 and Copy wording and other OMB numbers.
 - Each Notice: **2026**, **$11,439.00** in the multiple-employer sentence, and **$6,717.90** in the railroad-employer sentence. The latter accepts the sample's “Tier 2 RRTA” wording as well as “social security.” Flags the two previous amounts.
 - Each Instructions section, Box 12: **2026**, **$24,500** in both requested deferral sentences, and **$27,500** for the 403(b) limit. Flags $23,500 and $26,500. The SIMPLE-plan amount is not checked because no change to it was requested.
 
-All three section types must appear somewhere in the document. Every detected copy/section is checked separately; one good form cannot satisfy another form's missing label. Shared Notice/Instructions sections are checked once per block, not matched to individual employees. The year rule flags standalone 20xx numbers other than 2026; unrelated four-digit numbers or historical references may need review.
+Each employee packet must contain three consecutive form copies, followed by one Notice and one Instructions section. Every detected copy/section is checked separately; one good form cannot satisfy another form's missing label. Employees are numbered by packet order in the export; names and employee IDs are not extracted. Address blocks do not split a packet. Incomplete packets fail; grouping assumes the repeated layout you described rather than matching employee identities. The year rule flags standalone 20xx numbers other than 2026; unrelated four-digit numbers or historical references may need review.
 
 ## Supported HTML structure
 
