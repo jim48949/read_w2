@@ -1,0 +1,56 @@
+[
+  {
+    "name": "OMB number",
+    "required": "\\bOMB\\s*(?:NO\\.?\\s*)?[:#]?\\s*1545\\s*[-\u2013\u2014]\\s*0029\\b",
+    "forbidden": "\\bOMB\\s*(?:NO\\.?\\s*)?[:#]?\\s*(?!1545\\s*[-\u2013\u2014]\\s*0029\\b)\\d{4}\\s*[-\u2013\u2014]\\s*\\d{4}\\b",
+    "scope": "form"
+  },
+  {
+    "name": "Box 14a Other",
+    "required": "\\b14\\s*a\\s*[.:-]?\\s*Other\\b",
+    "forbidden": "\\b14\\s*[.:-]?\\s*Other\\b",
+    "scope": "form"
+  },
+  {
+    "scope": "form",
+    "name": "W-2 Form Page 1 of 1",
+    "required": "W\\s*[-\u2013\u2014]\\s*2\\s+Form\\s+Page\\s+1\\s+of\\s+1\\b",
+    "forbidden": "W\\s*[-\u2013\u2014]\\s*2\\s+Form\\s+Copy\\b"
+  },
+  {
+    "name": "Tax year 2026",
+    "required": "\\b2026\\b",
+    "forbidden": "\\b20(?!26\\b)\\d{2}\\b",
+    "scope": "form"
+  },
+  {
+    "name": "Tax year 2026",
+    "required": "\\b2026\\b",
+    "forbidden": "\\b20(?!26\\b)\\d{2}\\b",
+    "scope": "notice"
+  },
+  {
+    "scope": "notice",
+    "name": "Multiple employers social security limit",
+    "required": "If you had more than one employer in 2026 and more than\\s+\\$11,439\\.00\\s+in social security",
+    "forbidden": "\\$10,918\\.20"
+  },
+  {
+    "scope": "notice",
+    "name": "Railroad employer limit",
+    "required": "If you had more than one railroad employer and more than\\s+\\$6,717\\.90\\s+in\\s+(?:social security|Tier\\s+2\\s+RRTA)",
+    "forbidden": "\\$6,409\\.20"
+  },
+  {
+    "name": "Tax year 2026",
+    "required": "\\b2026\\b",
+    "forbidden": "\\b20(?!26\\b)\\d{2}\\b",
+    "scope": "instructions"
+  },
+  {
+    "scope": "instructions",
+    "name": "Box 12 elective deferral limits",
+    "required": "\\bBox\\s+12\\b.{0,4000}?Elective deferrals.{0,600}?limited to a total of\\s+\\$24,500\\b.{0,400}?\\$27,500\\b.{0,300}?Deferrals under code G are limited to\\s+\\$24,500\\b",
+    "forbidden": "\\$(?:23,500|26,500)\\b"
+  }
+]
