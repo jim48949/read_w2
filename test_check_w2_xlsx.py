@@ -19,7 +19,8 @@ def add_employee(sheet, start=1):
         row = start + index * 6
         sheet.cell(row, 1, "a Employee's social security number")
         sheet.cell(row + 1, 1, 'OMB No. 1545-0029')
-        sheet.cell(row + 2, 1, FORM.replace('OMB No. 1545-0029', '').replace('2026', ''))
+        sheet.cell(row + 2, 1, FORM.replace('OMB No. 1545-0029', '').replace('Wage and Tax Statement 2026', ''))
+        sheet.cell(row + 3, 1, 'Wage and Tax Statement')
         sheet.cell(row + 3, 2, 2026)
     sheet.cell(start + 18, 1, 'Notice to Employee')
     sheet.cell(start + 19, 1, NOTICE.replace('Notice to Employee', ''))
@@ -174,3 +175,27 @@ class WorkbookTests(unittest.TestCase):
         self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
         self.path.unlink()
         self.assertEqual(subprocess.run(command, capture_output=True).returncode, 2)
+
+    def test_address_year_numbers_do_not_cause_false_failure(self):
+        add_employee(self.sheet)
+        self.sheet['C5'] = '2025 Main Street'
+        self.sheet['C11'] = 'Account 2099'
+        self.sheet['C17'] = 2000
+        report = self.check()
+        self.assertTrue(report['passed'], report)
+
+    def test_wrong_year_cell_cannot_borrow_address_year(self):
+        add_employee(self.sheet)
+        self.sheet['B4'] = 2025
+        self.sheet['C5'] = '2026 Main Street'
+        report = self.check()
+        year = next(c for c in report['results'][0]['checks'] if c['rule'] == 'Tax year 2026')
+        self.assertFalse(year['passed'])
+        self.assertEqual(year['required_matches'], 0)
+        self.assertEqual(year['forbidden_matches'], 1)
+
+    def test_missing_tax_year_cell_still_fails(self):
+        add_employee(self.sheet)
+        self.sheet['B4'] = None
+        self.sheet['C5'] = '2026 Main Street'
+        self.assertFalse(self.check()['passed'])

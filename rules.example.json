@@ -20,14 +20,16 @@
   {
     "name": "Tax year 2026",
     "required": "\\b2026\\b",
-    "forbidden": "\\b20(?!26\\b)\\d{2}\\b",
-    "scope": "form"
+    "forbidden": "\\b(?!2026\\b)\\d{4}\\b",
+    "scope": "form",
+    "year_context": "form"
   },
   {
     "name": "Tax year 2026",
     "required": "\\b2026\\b",
-    "forbidden": "\\b20(?!26\\b)\\d{2}\\b",
-    "scope": "notice"
+    "forbidden": "\\b(?!2026\\b)\\d{4}\\b",
+    "scope": "notice",
+    "year_context": "notice"
   },
   {
     "scope": "notice",
@@ -44,8 +46,9 @@
   {
     "name": "Tax year 2026",
     "required": "\\b2026\\b",
-    "forbidden": "\\b20(?!26\\b)\\d{2}\\b",
-    "scope": "instructions"
+    "forbidden": "\\b(?!2026\\b)\\d{4}\\b",
+    "scope": "instructions",
+    "year_context": "instructions"
   },
   {
     "scope": "instructions",

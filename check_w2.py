@@ -17,20 +17,20 @@ BASIC_RULES = [
 
 
 YEAR_RULE = {"name": "Tax year 2026", "required": r"\b2026\b",
-             "forbidden": r"\b20(?!26\b)\d{2}\b"}
+             "forbidden": r"\b(?!2026\b)\d{4}\b"}
 DEFAULT_RULES = [dict(rule, scope="form") for rule in BASIC_RULES] + [
     {"scope": "form", "name": "W-2 Form Page 1 of 1",
      "required": r"W\s*[-–—]\s*2\s+Form\s+Page\s+1\s+of\s+1\b",
      "forbidden": r"W\s*[-–—]\s*2\s+Form\s+Copy\b"},
-    dict(YEAR_RULE, scope="form"),
-    dict(YEAR_RULE, scope="notice"),
+    dict(YEAR_RULE, scope="form", year_context="form"),
+    dict(YEAR_RULE, scope="notice", year_context="notice"),
     {"scope": "notice", "name": "Multiple employers social security limit",
      "required": r"If you had more than one employer in 2026 and more than\s+\$11,439\.00\s+in social security",
      "forbidden": r"\$10,918\.20"},
     {"scope": "notice", "name": "Railroad employer limit",
      "required": r"If you had more than one railroad employer and more than\s+\$6,717\.90\s+in\s+(?:social security|Tier\s+2\s+RRTA)",
      "forbidden": r"\$6,409\.20"},
-    dict(YEAR_RULE, scope="instructions"),
+    dict(YEAR_RULE, scope="instructions", year_context="instructions"),
     {"scope": "instructions", "name": "Box 12 elective deferral limits",
      "required": r"\bBox\s+12\b.{0,4000}?Elective deferrals.{0,600}?limited to a total of\s+\$24,500\b.{0,400}?\$27,500\b.{0,300}?Deferrals under code G are limited to\s+\$24,500\b",
      "forbidden": r"\$(?:23,500|26,500)\b"},
@@ -65,19 +65,37 @@ def load_rules(path):
             raise ValueError("Each rule needs a nonempty required regex")
         if rule.get("scope", "all") not in {"all", "form", "notice", "instructions"}:
             raise ValueError("Unknown rule scope")
+        if "year_context" in rule and rule["year_context"] not in {"form", "notice", "instructions"}:
+            raise ValueError("Unknown year context")
         for field in ("required", "forbidden"):
             if field in rule:
                 re.compile(rule[field], re.IGNORECASE)
     return rules
 
 
-def inspect_text(text, rules):
+FORM_YEAR = re.compile(
+    r"\b(?:Wage\s+and\s+Tax\s+Statement|Tax\s+year|Calendar\s+year)\s*[:–—-]?\s*(\d{4})\b", re.I)
+NARRATIVE_YEAR = re.compile(
+    r"\b(?:EITC\s+for|specified\s+amount\s+for|"
+    r"For(?=\s+\d{4}\s+income\s+limits)|one\s+employer\s+in|"
+    r"age\s+\d+(?:\s+through\s+\d+)?\s+in|December\s+31,?|"
+    r"tax\s+year|calendar\s+year)\s*[:–—-]?\s*(\d{4})\b", re.I)
+
+
+def inspect_text(text, rules, form_year_text=None):
     # Normalize HTML typography and whitespace, without emitting employee data.
     text = " ".join(text.split())
     results = []
     for rule in rules:
-        required = len(list(re.finditer(rule["required"], text, re.IGNORECASE)))
-        forbidden = len(list(re.finditer(rule["forbidden"], text, re.IGNORECASE))) if rule.get("forbidden") else 0
+        target = text
+        if rule.get("year_context"):
+            pattern = FORM_YEAR if rule["year_context"] == "form" else NARRATIVE_YEAR
+            # Inspect only years attached to known tax-year labels/references.
+            # Unrelated address, account, and amount numbers are excluded.
+            source = form_year_text if rule["year_context"] == "form" and form_year_text is not None else text
+            target = " ".join(m.group(1) for m in pattern.finditer(source))
+        required = len(list(re.finditer(rule["required"], target, re.IGNORECASE)))
+        forbidden = len(list(re.finditer(rule["forbidden"], target, re.IGNORECASE))) if rule.get("forbidden") else 0
         results.append({"rule": rule["name"], "passed": required > 0 and forbidden == 0,
                         "required_matches": required, "forbidden_matches": forbidden})
     return results
@@ -153,6 +171,32 @@ def html_sections(block, styles):
     if re.search(r"\bOMB\b|W\s*[-–—]\s*2\s+Form\b|\b14\s*a?\s+Other\b", text, re.I):
         return [("form", text)]
     return []  # Address/cover blocks are not W-2 form copies.
+
+
+def html_form_year_text(block, styles):
+    """Read the positioned year field even when DOM order differs from display."""
+    labels = [n for n in block.find_all("span") if not n.find_parent("span")]
+    anchors = [n for n in labels if re.fullmatch(r"Wage\s+and\s+Tax\s+Statement", n.get_text(" ", strip=True), re.I)]
+    if not anchors:
+        return block.get_text(" ", strip=True)  # Explicit tax-year labels in other templates.
+    fields = []
+    for anchor in anchors:
+        try:
+            top = pixel_top(anchor, styles)
+            left = float(element_style(anchor, styles)["left"].removesuffix("px"))
+            candidates = []
+            for node in labels:
+                value = node.get_text(" ", strip=True)
+                if not re.fullmatch(r"\d{4}", value):
+                    continue
+                node_left = float(element_style(node, styles)["left"].removesuffix("px"))
+                if abs(pixel_top(node, styles) - top) <= 8 and node_left > left:
+                    candidates.append((node_left, value))
+            if candidates:
+                fields.append("Wage and Tax Statement " + min(candidates)[1])
+        except (KeyError, ValueError):
+            continue  # Unlocatable fields fail as missing, rather than using unrelated numbers.
+    return " ".join(fields)
 
 
 def group_employees(regions, forms_per_employee, rules):
@@ -249,7 +293,8 @@ def check_document(path, rules, block_selector=None, forms_per_employee=3):
         for scope, text in sections:
             seen_scopes.add(scope)
             selected = [r for r in rules if r.get("scope", "all") in {"all", scope}]
-            checks = inspect_text(text, selected)
+            checks = inspect_text(text, selected,
+                                      form_year_text=html_form_year_text(block, styles) if scope == "form" else None)
             if not checks:
                 continue
             regions.append({"block": index, "section": scope, "passed": bool(text.strip()) and all(c["passed"] for c in checks),

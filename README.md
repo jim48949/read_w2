@@ -72,7 +72,11 @@ Missing/extra sections and sections out of order are also reported for the affec
 - Each Notice: **2026**, **$11,439.00** in the multiple-employer sentence, and **$6,717.90** in the railroad-employer sentence. The latter accepts the sample's “Tier 2 RRTA” wording as well as “social security.” Flags the two previous amounts.
 - Each Instructions section, Box 12: **2026**, **$24,500** in both requested deferral sentences, and **$27,500** for the 403(b) limit. Flags $23,500 and $26,500. The SIMPLE-plan amount is not checked because no change to it was requested.
 
-Each employee packet must contain three consecutive form copies, followed by one Notice and one Instructions section. Every detected copy/section is checked separately; one good form cannot satisfy another form's missing label. Employees are numbered by packet order in the export; names and employee IDs are not extracted. Address blocks do not split a packet. Incomplete packets fail; grouping assumes the repeated layout you described rather than matching employee identities. The year rule flags standalone 20xx numbers other than 2026; unrelated four-digit numbers or historical references may need review.
+Each employee packet must contain three consecutive form copies, followed by one Notice and one Instructions section. Every detected copy/section is checked separately; one good form cannot satisfy another form's missing label. Employees are numbered by packet order in the export; names and employee IDs are not extracted. Address blocks do not split a packet. Incomplete packets fail; grouping assumes the repeated layout you described rather than matching employee identities. The year check examines contextual references rather than every four-digit number. In Excel, it reads the year immediately following “Wage and Tax Statement” (or an explicit “Tax year”/“Calendar year” label) on the same row. For the positioned HTML export it reads the year span to the right of “Wage and Tax Statement,” within an eight-pixel vertical band, even if DOM order differs. Other HTML templates can use explicit tax-year labels.
+
+Notice/Instructions year checks cover the sample's EITC, specified-amount, income-limit, multiple-employer, age-in-year, and December 31 references, plus explicit tax/calendar-year labels. Street addresses, account numbers, and unrelated amounts are excluded. A recognized reference with an incorrect year fails; no recognized year also fails instead of accepting an unrelated 2026. New wording or layouts may require extending these contexts. This is template-based validation, not a general detector of every possible year reference.
+
+For these checks, `required matches` counts recognized tax-year references equal to 2026; `forbidden matches` counts recognized references with a different four-digit year. Missing fields can produce zero for both counts and still fail. If you use `--rules` with an older custom JSON, replace its year entries with the updated `rules.example.json` entries, including `year_context`, to enable the context logic.
 
 ## Supported HTML structure
 
@@ -96,7 +100,7 @@ The default selector recognizes these too. Nested selected blocks are rejected t
 .venv/bin/python check_w2.py export.html --rules rules.example.json
 ```
 
-The JSON array replaces the defaults. Each rule has `name`, a case-insensitive Python `required` regex, an optional `forbidden` regex, and optional `scope` (`form`, `notice`, `instructions`, or `all`). Required text must occur and forbidden text must not occur. Each requested scope must be found. Escape backslashes in JSON. HTML entities and whitespace are normalized; text may be split across tags.
+The JSON array replaces the defaults. Each rule has `name`, a case-insensitive Python `required` regex, an optional `forbidden` regex, and optional `scope` (`form`, `notice`, `instructions`, or `all`). Required text must occur and forbidden text must not occur. Each requested scope must be found. Optional `year_context` (`form`, `notice`, or `instructions`) restricts a year rule to recognized tax-year references before applying its regexes. Escape backslashes in JSON. HTML entities and whitespace are normalized; text may be split across tags.
 
 ## Limits and validation
 

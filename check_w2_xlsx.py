@@ -4,12 +4,13 @@ import argparse
 import json
 import re
 import sys
+from itertools import groupby
 from pathlib import Path
 
 from openpyxl import load_workbook
 from openpyxl.utils.cell import column_index_from_string
 
-from check_w2 import group_employees, inspect_text, load_rules, positive_int
+from check_w2 import FORM_YEAR, group_employees, inspect_text, load_rules, positive_int
 
 FORM_HEADER = re.compile(r"^(?:a\s+)?Employee[’']s\s+social\s+security\s+number\b", re.I)
 NOTICE_HEADER = re.compile(r"^Notice\s+to\s+Employee\s*$", re.I)
@@ -76,8 +77,14 @@ def worksheet_sections(sheet):
     sections = []
     for index, (start, scope) in enumerate(starts):
         end = starts[index + 1][0] - 1 if index + 1 < len(starts) else sheet.max_row
-        text = ' '.join(text for row, column, text in cells if start <= row <= end)
-        sections.append((scope, start, end, text))
+        section_cells = [(row, column, text) for row, column, text in cells if start <= row <= end]
+        text = ' '.join(text for row, column, text in section_cells)
+        year_fields = []
+        if scope == 'form':
+            for row, row_cells in groupby(section_cells, key=lambda c: c[0]):
+                row_text = ' '.join(c[2] for c in row_cells)
+                year_fields.extend(m.group(0) for m in FORM_YEAR.finditer(row_text))
+        sections.append((scope, start, end, text, ' '.join(year_fields)))
     return sections
 
 
@@ -93,9 +100,10 @@ def check_workbook(path, rules, forms_per_employee=3):
             if sheet.sheet_state != 'visible':
                 continue
             sheet_regions = []
-            for scope, start, end, text in worksheet_sections(sheet):
+            for scope, start, end, text, year_text in worksheet_sections(sheet):
                 seen.add(scope)
-                checks = inspect_text(text, [r for r in rules if r.get('scope', 'all') in {'all', scope}])
+                checks = inspect_text(text, [r for r in rules if r.get('scope', 'all') in {'all', scope}],
+                                      form_year_text=year_text)
                 if not checks:
                     continue
                 # Use a worksheet number rather than its possibly sensitive name.

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from check_w2 import DEFAULT_RULES, check_document, load_rules
 
-FORM = 'W-2 Form Page 1 of 1 OMB No. 1545-0029 2026 14a Other'
+FORM = 'W-2 Form Page 1 of 1 OMB No. 1545-0029 Wage and Tax Statement 2026 14a Other'
 NOTICE = ('Notice to Employee 2026 If you had more than one employer in 2026 and more than '
           '$11,439.00 in social security taxes. If you had more than one railroad employer and more than '
           '$6,717.90 in Tier 2 RRTA tax was withheld.')
@@ -15,7 +15,7 @@ INSTRUCTIONS = ('Instructions for Employee (See also Notice to Employee on the b
                 'contributions (codes BB and EE) under all plans are generally limited to a total of '
                 '$24,500 ($17,000 if you only have SIMPLE plans; $27,500 for section 403(b) plans '
                 'if you qualify for the 15-year rule explained in Pub. 571). '
-                'Deferrals under code G are limited to $24,500.')
+                'Deferrals under code G are limited to $24,500. If you were at least age 50 in 2026, see instructions.')
 
 
 def document(form=FORM, notice=NOTICE, instructions=INSTRUCTIONS):
