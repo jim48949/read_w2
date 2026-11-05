@@ -1,4 +1,4 @@
-# W-2 HTML update checker
+# W-2 HTML and Excel update checkers
 
 Read a local Strategy/MicroStrategy Report Services HTML export and check each detected W-2 form copy, Notice to Employee, and Instructions for Employee section. This version reads HTML instead of PDF; PDF grid and password options have been removed.
 
@@ -14,6 +14,32 @@ python -m venv .venv
 ```
 
 The report directory must already exist. Exit status is `0` for all checks passed, `1` for failed checks or missing sections, and `2` for an input/configuration/parser error. Reports identify HTML block numbers and section types, without employee names or extracted text. Processing is local; scripts are not executed and linked images/styles/resources are not downloaded. Keep employee exports and reports out of Git.
+
+## Separate Excel version (.xlsx)
+
+`check_w2_xlsx.py` reads the supplied workbook format directly. The HTML version remains `check_w2.py`; neither input file is modified. Both versions share the validation rules and employee grouping, so keep both Python files together.
+
+Install the optional Excel dependencies on Windows:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-xlsx.txt
+.\.venv\Scripts\python.exe check_w2_xlsx.py "C:\Documents\W2 2026 emp3.xlsx" --json report.json
+```
+
+On Linux/macOS, use `.venv/bin/python` in place of `.\.venv\Scripts\python.exe`. The same `--rules` and `--forms-per-employee` options are supported. The result uses one PASS/FAIL per employee; failures identify the worksheet number, row range, and failed rule. JSON excludes employee text and worksheet names. The supplied sample was checked successfully: **3 employees, 15 sections, all passed**.
+
+The Excel reader supports the sample's vertically stacked layout, including merged cells, three forms followed by Notice and Instructions, and multiple visible worksheets. It finds each form using the “a Employee's social security number” header; an OMB heading within three rows is part of that form. An OMB heading farther away can identify a form with a missing SSN header. Notice and Instructions must have recognizable heading cells. Rows are read top to bottom, cells left to right; text within each cell is preserved. Numeric years are supported, and simple dollar-formatted numeric cells are converted to dollar strings.
+
+Each employee packet must be complete within one worksheet. Visible nonempty worksheets without recognized headers produce an input error; blank worksheets are ignored. Hidden worksheets, rows, and columns are excluded. Formula and Excel error cells in visible content are rejected: export/recalculate to a workbook containing values before checking. The checker never evaluates formulas, runs macros, or retrieves external links. Password-encrypted workbooks, legacy `.xls`, `.xlsm`, side-by-side forms, and labels stored only in images/text boxes are unsupported. If both form-start identifiers disappear, section detection can fail; review a rendered workbook and validate new layouts. Cell text checks do not verify formatting, printed appearance, clipping, conditional formatting, or IRS compliance.
+
+Run the full HTML and Excel suites after installing `requirements-xlsx.txt`:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest -v
+```
+
+For an HTML-only installation, run `python -m unittest -v test_check_w2` instead. Employee workbook attachments and generated reports are ignored by Git and are not test fixtures.
 
 ## Employee results
 
@@ -66,7 +92,7 @@ The JSON array replaces the defaults. Each rule has `name`, a case-insensitive P
 This validates HTML text and the supplied export's block structure, not rendered appearance or IRS compliance. Simple class/inline `display:none`, `visibility:hidden`/`collapse`, and `hidden` elements are excluded. This is not a full browser CSS engine: complex selectors, cascade precedence, external styles, clipping, image text, and visual overlap are not validated. Review a rendered sample before relying on a new export template.
 
 ```sh
-.venv/bin/python -m unittest -v
+.venv/bin/python -m unittest -v test_check_w2
 ```
 
 Tests cover all requested old values, each section's year, both deferral occurrences, multi-form isolation, HTML entities, hidden/script content, out-of-order positioned sections, missing sections, unsupported layouts, CLI exit codes, and report privacy. Tests use synthetic content; the employee attachment is not committed as a fixture.
