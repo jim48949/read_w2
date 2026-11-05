@@ -2,6 +2,17 @@
 
 Read a local Strategy/MicroStrategy Report Services HTML export and check each detected W-2 form copy, Notice to Employee, and Instructions for Employee section. This version reads HTML instead of PDF; PDF grid and password options have been removed.
 
+## Windows first-time setup and launchers
+
+1. Download and extract the complete project ZIP to a writable folder. Keep the scripts together.
+2. Double-click **install.bat**. It finds Python 3.10 or newer, creates `.venv`, and installs both HTML and Excel dependencies. If Python is missing, it attempts a per-user Python 3.12 installation through Windows Package Manager (WinGet). Internet access is needed during installation. If WinGet is unavailable, the installer explains how to install Python from python.org and rerun it. No administrator terminal is required for the intended per-user setup.
+3. Drag **one HTML file onto launch_html.bat**, or **one Excel file onto launch_xlsx.bat**. Alternatively, double-click the appropriate launcher and paste the file path when prompted; surrounding quotes are accepted.
+4. Read the employee results in the window. A separate report is saved under the project's `reports` folder on each run. Press a key to close the window.
+
+The installer can be rerun to refresh dependencies. Launchers use this project's virtual environment, regardless of the terminal's current folder. If it is missing, they ask you to run `install.bat`. Installer/launcher windows stay open on errors too. Keep `windows_install.ps1` and `windows_launcher.py` beside the batch files; they provide the shared setup and launch logic. The installer runs its local PowerShell helper with a process-only execution-policy override; it does not change the machine's execution-policy settings. Organization-managed restrictions may still require your IT team's assistance.
+
+This is a Python-based installation, not a standalone `.exe`. After installation, checking files is local and requires no Internet access. The batch/PowerShell entry points need a Windows smoke test; their shared Python launch logic is covered by automated tests on Linux.
+
 ## Install and run
 
 Requires Python 3.10 or newer.
