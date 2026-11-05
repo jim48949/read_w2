@@ -13,8 +13,8 @@
   },
   {
     "scope": "form",
-    "name": "W-2 Form Page 1 of 1",
-    "required": "W\\s*[-\u2013\u2014]\\s*2\\s+Form\\s+Page\\s+1\\s+of\\s+1\\b",
+    "name": "W-2 Form Page numbering",
+    "required": "W\\s*[-\u2013\u2014]\\s*2\\s+Form\\s+Page\\s+[1-9]\\d*\\s+of\\s+[1-9]\\d*\\b",
     "forbidden": "W\\s*[-\u2013\u2014]\\s*2\\s+Form\\s+Copy\\b"
   },
   {

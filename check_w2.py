@@ -19,8 +19,8 @@ BASIC_RULES = [
 YEAR_RULE = {"name": "Tax year 2026", "required": r"\b2026\b",
              "forbidden": r"\b(?!2026\b)\d{4}\b"}
 DEFAULT_RULES = [dict(rule, scope="form") for rule in BASIC_RULES] + [
-    {"scope": "form", "name": "W-2 Form Page 1 of 1",
-     "required": r"W\s*[-–—]\s*2\s+Form\s+Page\s+1\s+of\s+1\b",
+    {"scope": "form", "name": "W-2 Form Page numbering",
+     "required": r"W\s*[-–—]\s*2\s+Form\s+Page\s+[1-9]\d*\s+of\s+[1-9]\d*\b",
      "forbidden": r"W\s*[-–—]\s*2\s+Form\s+Copy\b"},
     dict(YEAR_RULE, scope="form", year_context="form"),
     dict(YEAR_RULE, scope="notice", year_context="notice"),
@@ -199,16 +199,34 @@ def html_form_year_text(block, styles):
     return " ".join(fields)
 
 
+PAGE_LABEL = re.compile(r"W\s*[-–—]\s*2\s+Form\s+Page\s+(\d+)\s+of\s+(\d+)\b", re.I)
+
+
+def form_pages(text):
+    return [{"page": int(m[1]), "total": int(m[2])} for m in PAGE_LABEL.finditer(" ".join(text.split()))]
+
+
+def declared_pages(region):
+    labels = region.get("page_labels", [])
+    return max(1, labels[0]["total"]) if len(labels) == 1 else 1
+
+
 def group_employees(regions, forms_per_employee, rules):
     """Group consecutive export packets, without reading employee identities."""
     groups = []
     current = []
     form_count = 0
+    page_count = 1
     for region in regions:
         if region["section"] == "form" and current and (
-            form_count >= forms_per_employee or any(r["section"] != "form" for r in current)):
+            form_count >= forms_per_employee * page_count
+            or any(r["section"] != "form" for r in current)
+            or (form_count >= forms_per_employee and form_count % forms_per_employee == 0
+                and len(region.get("page_labels", [])) == 1 and region["page_labels"][0]["page"] == 1)):
             groups.append(current)
             current, form_count = [], 0
+        if not current and region["section"] == "form":
+            page_count = declared_pages(region)
         current.append(region)
         form_count += region["section"] == "form"
     if current:
@@ -219,9 +237,20 @@ def group_employees(regions, forms_per_employee, rules):
     employees = []
     for number, results in enumerate(groups, 1):
         errors = []
+        forms = [r for r in results if r["section"] == "form"]
+        page_count = declared_pages(forms[0]) if forms else 1
+        for index, form in enumerate(forms):
+            expected_page = index // forms_per_employee + 1
+            labels = form.get("page_labels", [])
+            if len(labels) != 1:
+                errors.append(f"Form {index + 1}: expected one W-2 Form Page label; found {len(labels)}")
+            elif labels[0] != {"page": expected_page, "total": page_count}:
+                label = labels[0]
+                errors.append(f"Form {index + 1}: expected Page {expected_page} of {page_count}; "
+                              f"found Page {label['page']} of {label['total']}")
         for scope in sorted(required):
             count = sum(r["section"] == scope for r in results)
-            expected = forms_per_employee if scope == "form" else 1
+            expected = forms_per_employee * page_count if scope == "form" else 1
             if count != expected:
                 errors.append(f"Expected {expected} {scope} section(s); found {count}")
         # Export packets must start with forms, followed by Notice and Instructions.
@@ -230,7 +259,7 @@ def group_employees(regions, forms_per_employee, rules):
         if positions != sorted(positions):
             errors.append("Sections are out of order; expected forms, notice, instructions")
         employees.append({"employee": number, "passed": not errors and all(r["passed"] for r in results),
-                          "errors": errors, "results": results})
+                          "errors": errors, "page_count": page_count, "results": results})
     return employees
 
 
@@ -298,7 +327,8 @@ def check_document(path, rules, block_selector=None, forms_per_employee=3):
             if not checks:
                 continue
             regions.append({"block": index, "section": scope, "passed": bool(text.strip()) and all(c["passed"] for c in checks),
-                            "text_available": bool(text.strip()), "checks": checks})
+                            "text_available": bool(text.strip()), "checks": checks,
+                            "page_labels": form_pages(text) if scope == "form" else []})
     missing = sorted({r["scope"] for r in rules if r.get("scope", "all") != "all"} - seen_scopes)
     employees = group_employees(regions, forms_per_employee, rules)
     return {"employees": employees, "employees_checked": len(employees),
@@ -313,7 +343,7 @@ def main():
     parser.add_argument("--json", type=Path, help="Write a report without extracted employee text")
     parser.add_argument("--block-selector", help="CSS selector for disjoint report containers")
     parser.add_argument("--forms-per-employee", type=positive_int, default=3,
-                        help="Expected consecutive form copies per employee (default: 3)")
+                        help="Copies per numbered page per employee (default: 3)")
     args = parser.parse_args()
     try:
         report = check_document(args.html, load_rules(args.rules), args.block_selector, args.forms_per_employee)

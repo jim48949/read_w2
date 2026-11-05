@@ -10,7 +10,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.utils.cell import column_index_from_string
 
-from check_w2 import FORM_YEAR, group_employees, inspect_text, load_rules, positive_int
+from check_w2 import FORM_YEAR, form_pages, group_employees, inspect_text, load_rules, positive_int
 
 FORM_HEADER = re.compile(r"^(?:a\s+)?Employee[’']s\s+social\s+security\s+number\b", re.I)
 NOTICE_HEADER = re.compile(r"^Notice\s+to\s+Employee\s*$", re.I)
@@ -109,6 +109,7 @@ def check_workbook(path, rules, forms_per_employee=3):
                 # Use a worksheet number rather than its possibly sensitive name.
                 region = {'sheet': sheet_number, 'row_start': start, 'row_end': end, 'section': scope,
                           'text_available': bool(text.strip()), 'checks': checks,
+                          'page_labels': form_pages(text) if scope == 'form' else [],
                           'passed': bool(text.strip()) and all(c['passed'] for c in checks)}
                 sheet_regions.append(region)
             groups = group_employees(sheet_regions, forms_per_employee, rules)
@@ -154,7 +155,8 @@ def main():
     parser.add_argument('xlsx', type=Path)
     parser.add_argument('--rules', type=Path, help='Custom JSON validation rules (same as HTML version)')
     parser.add_argument('--json', type=Path, help='Save a report without employee text')
-    parser.add_argument('--forms-per-employee', type=positive_int, default=3)
+    parser.add_argument('--forms-per-employee', type=positive_int, default=3,
+                        help='Copies per numbered page per employee (default: 3)')
     args = parser.parse_args()
     try:
         report = check_workbook(args.xlsx, load_rules(args.rules), args.forms_per_employee)
